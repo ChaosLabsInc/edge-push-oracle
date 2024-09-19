@@ -1,0 +1,5 @@
+EdgePushOracleTest:testInitialValues() (gas: 21420)
+EdgePushOracleTest:testOnlyOwnerCanUpdate() (gas: 18763)
+EdgePushOracleTest:testPostUpdate() (gas: 106704)
+EdgePushOracleTest:testSetDecimals() (gas: 16508)
+EdgePushOracleTest:testSetDescription() (gas: 19282)
