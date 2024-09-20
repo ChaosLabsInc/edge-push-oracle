@@ -13,12 +13,12 @@ contract EdgePushOracle is Ownable, AccessControl {
         uint256 blockNumber;
     }
 
-    uint256 public latestRound;
+    uint80 public latestRound;
     uint8 public decimals;
     string public description;
-    mapping(uint256 => RoundData) public rounds;
+    mapping(uint80 => RoundData) public rounds;
 
-    event PriceUpdated(uint256 indexed round, int256 answer, uint256 timestamp, uint256 blockNumber);
+    event PriceUpdated(uint80 indexed round, int256 answer, uint256 timestamp, uint256 blockNumber);
 
     /**
      * @dev Constructor allows the owner to set the initial global decimals value and description.
@@ -40,13 +40,28 @@ contract EdgePushOracle is Ownable, AccessControl {
         emit PriceUpdated(latestRound, answer, block.timestamp, block.number);
     }
 
-    function getRoundData(uint256 round) public view returns (int256 answer, uint256 timestamp, uint256 blockNumber) {
+    function getRoundData(uint80 round) public view returns (int256 answer, uint256 timestamp, uint256 blockNumber) {
+        require(round <= latestRound, "Round is not yet available");
         RoundData storage data = rounds[round];
         return (data.answer, data.timestamp, data.blockNumber);
     }
 
     function latestAnswer() public view returns (int256 answer) {
         return rounds[latestRound].answer;
+    }
+
+    function latestRoundData()
+        external
+        view
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+    {
+        return (
+            latestRound,
+            rounds[latestRound].answer,
+            rounds[latestRound].timestamp,
+            rounds[latestRound].timestamp,
+            latestRound
+        );
     }
 
     function latestTimestamp() public view returns (uint256 timestamp) {

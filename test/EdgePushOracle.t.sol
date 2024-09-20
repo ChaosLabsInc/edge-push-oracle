@@ -66,4 +66,24 @@ contract EdgePushOracleTest is Test {
 
         vm.stopPrank();
     }
+
+    function testMultipleUpdates() public {
+        oracle.postUpdate(1000);
+        oracle.postUpdate(1500);
+        oracle.postUpdate(2000);
+
+        (, int256 answer,,,) = oracle.latestRoundData();
+        assertEq(answer, 2000);
+    }
+
+    function testGetRoundDataInvalidRound() public {
+        vm.expectRevert();
+        oracle.getRoundData(999);
+    }
+
+    function testLatestRoundData() public {
+        oracle.postUpdate(3000);
+        (, int256 answer,,,) = oracle.latestRoundData();
+        assertEq(answer, 3000);
+    }
 }
