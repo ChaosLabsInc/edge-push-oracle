@@ -6,26 +6,14 @@ import "../src/EdgePushOracle.sol";
 
 contract DeployEdgePushOracle is Script {
     function run() external {
-        // Load the deployer's private key
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address owner = vm.addr(deployerPrivateKey);
 
-        // Start broadcasting transactions
         vm.startBroadcast(deployerPrivateKey);
 
-        // Set the owner address as the desired deployer address or another address
-        address ownerAddress = vm.addr(deployerPrivateKey);
+        EdgePushOracle oracle = new EdgePushOracle();
+        oracle.initialize(8, "EDGE_PUSH_ORACLE", owner);
 
-        // Deploy the SimpleOracle contract with the owner address
-        EdgePushOracle edgePushOracle = new EdgePushOracle(
-            18, // decimals
-            "test", // description
-            ownerAddress // owner address
-        );
-
-        // Log the deployed contract address
-        console.log("Deployed EdgePushOracle contract at", address(edgePushOracle));
-
-        // Stop broadcasting transactions
         vm.stopBroadcast();
     }
 }

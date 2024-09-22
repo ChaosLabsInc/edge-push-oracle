@@ -7,18 +7,18 @@ import "../src/EdgePushOracle.sol";
 contract EdgePushOracleTest is Test {
     EdgePushOracle public oracle;
     address public owner;
+    address public user;
 
     function setUp() public {
-        // Simulate a deployer's private key and wallet
-        owner = address(this); // For this test, the test contract itself is the owner.
-
-        // Deploys the contract with the initial setup
-        oracle = new EdgePushOracle(18, "ETH/USD Price Feed", owner);
+        owner = address(this);
+        user = address(0x1);
+        oracle = new EdgePushOracle();
+        oracle.initialize(8, "TEST_ORACLE", owner);
     }
 
     function testInitialValues() public view {
-        assertEq(oracle.decimals(), 18);
-        assertEq(oracle.description(), "ETH/USD Price Feed");
+        assertEq(oracle.decimals(), 8);
+        assertEq(oracle.description(), "TEST_ORACLE");
         assertEq(oracle.owner(), owner); // Verify that the owner is set correctly
     }
 

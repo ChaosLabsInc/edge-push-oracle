@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "openzeppelin-contracts/contracts/access/Ownable.sol";
-import "openzeppelin-contracts/contracts/access/AccessControl.sol";
+import "openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract EdgePushOracle is Ownable, AccessControl {
+contract EdgePushOracle is OwnableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     bytes32 public constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
 
     struct RoundData {
@@ -20,18 +21,17 @@ contract EdgePushOracle is Ownable, AccessControl {
 
     event PriceUpdated(uint80 indexed round, int256 answer, uint256 timestamp, uint256 blockNumber);
 
-    /**
-     * @dev Constructor allows the owner to set the initial global decimals value and description.
-     * @param _decimals The number of decimals for the answer values
-     * @param _description A short description or title for the feed
-     * @param _owner The address of the initial owner of the contract
-     */
-    constructor(uint8 _decimals, string memory _description, address _owner) Ownable(_owner) {
+    function initialize(uint8 _decimals, string memory _description, address _owner) public initializer {
+        __Ownable_init(_owner);
+        __AccessControl_init();
+        __UUPSUpgradeable_init_unchained();
         decimals = _decimals;
         description = _description;
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(ORACLE_ROLE, _owner);
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function postUpdate(int256 answer) public onlyRole(ORACLE_ROLE) {
         latestRound++;
