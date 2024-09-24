@@ -36,8 +36,8 @@ contract EdgePushOracle is Ownable {
 
     // ============ Events ============
 
-    event TrustedOracleAdded(address indexed oracle);
-    event TrustedOracleRemoved(address indexed oracle);
+    event OracleAdded(address indexed oracle);
+    event OracleRemoved(address indexed oracle);
     event NewTransmission(
         uint80 indexed roundId, int256 price, uint256 reportRoundId, uint256 timestamp, address transmitter
     );
@@ -59,7 +59,7 @@ contract EdgePushOracle is Ownable {
         require(!trustedOracles[oracle], "Oracle already trusted");
         trustedOracles[oracle] = true;
         oracles.push(oracle);
-        emit TrustedOracleAdded(oracle);
+        emit OracleAdded(oracle);
     }
 
     /**
@@ -77,7 +77,7 @@ contract EdgePushOracle is Ownable {
                 break;
             }
         }
-        emit TrustedOracleRemoved(oracle);
+        (oracle);
     }
 
     // ============ Update Posting Function ============
