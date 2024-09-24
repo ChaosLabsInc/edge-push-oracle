@@ -1,86 +1,273 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.25;
 
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
-import "openzeppelin-contracts/contracts/access/AccessControl.sol";
+import "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
-contract EdgePushOracle is Ownable, AccessControl {
-    bytes32 public constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
+/**
+ * @title EdgePushOracle
+ * @dev A decentralized oracle contract that allows trusted oracles to push price updates
+ * with multi-signature verification.
+ */
+contract EdgePushOracle is Ownable {
+    using ECDSA for bytes32;
+
+    // ============ Structs ============
 
     struct RoundData {
-        int256 answer;
-        uint256 timestamp;
-        uint256 blockNumber;
+        int256 price; // Price
+        uint256 reportRoundId; // Report Round Id
+        uint256 observedTs; // Observation Timestamp
+        uint256 blockNumber; // Block Number
+        uint256 postedTs; // Posted Timestamp
+        uint256 numSignatures; // Number of valid signatures for this round
     }
+
+    // ============ State Variables ============
 
     uint80 public latestRound;
     uint8 public decimals;
     string public description;
     mapping(uint80 => RoundData) public rounds;
 
-    event PriceUpdated(uint80 indexed round, int256 answer, uint256 timestamp, uint256 blockNumber);
+    // Mapping of trusted oracle addresses
+    mapping(address => bool) public trustedOracles;
+    address[] public oracles;
 
-    /**
-     * @dev Constructor allows the owner to set the initial global decimals value and description.
-     * @param _decimals The number of decimals for the answer values
-     * @param _description A short description or title for the feed
-     * @param _owner The address of the initial owner of the contract
-     */
+    // ============ Events ============
+
+    event TrustedOracleAdded(address indexed oracle);
+    event TrustedOracleRemoved(address indexed oracle);
+    event NewTransmission(
+        uint80 indexed roundId, int256 price, uint256 reportRoundId, uint256 timestamp, address transmitter
+    );
+
+    // ============ Constructor ============
+
     constructor(uint8 _decimals, string memory _description, address _owner) Ownable(_owner) {
         decimals = _decimals;
         description = _description;
-        _grantRole(DEFAULT_ADMIN_ROLE, _owner);
-        _grantRole(ORACLE_ROLE, _owner);
     }
 
-    function postUpdate(int256 answer) public onlyRole(ORACLE_ROLE) {
+    // ============ Oracle Management Functions ============
+
+    /**
+     * @notice Owner can add a trusted oracle
+     * @param oracle Address of the oracle to be added
+     */
+    function addTrustedOracle(address oracle) external onlyOwner {
+        require(!trustedOracles[oracle], "Oracle already trusted");
+        trustedOracles[oracle] = true;
+        oracles.push(oracle);
+        emit TrustedOracleAdded(oracle);
+    }
+
+    /**
+     * @notice Owner can remove a trusted oracle
+     * @param oracle Address of the oracle to be removed
+     */
+    function removeTrustedOracle(address oracle) external onlyOwner {
+        require(trustedOracles[oracle], "Oracle not found");
+        trustedOracles[oracle] = false;
+        // Remove from oracles array
+        for (uint256 i = 0; i < oracles.length; i++) {
+            if (oracles[i] == oracle) {
+                oracles[i] = oracles[oracles.length - 1];
+                oracles.pop();
+                break;
+            }
+        }
+        emit TrustedOracleRemoved(oracle);
+    }
+
+    // ============ Update Posting Function ============
+
+    /**
+     * @notice Anyone can submit a report signed by multiple trusted oracles
+     * @param report Encoded report data
+     * @param signatures Array of signatures from trusted oracles
+     */
+    function postUpdate(bytes memory report, bytes[] memory signatures) public {
+        // Decode report
+        (int256 price, uint256 reportRoundId, uint256 expo, uint256 obsTs) =
+            abi.decode(report, (int256, uint256, uint256, uint256));
+
+        // Timestamp checks
+        require(obsTs > rounds[latestRound].observedTs, "Report timestamp is not newer");
+        require(obsTs <= block.timestamp + 5 minutes, "Report timestamp too far in the future");
+
+        uint256 minAllowedTimestamp = block.timestamp > 1 hours ? block.timestamp - 1 hours : 0;
+        require(obsTs >= minAllowedTimestamp, "Report timestamp too old");
+
+        // Signature verification
+        bytes32 reportHash = keccak256(report);
+        uint256 numSignatures = signatures.length;
+        uint256 validSignatures = 0;
+        address[] memory signers = new address[](numSignatures);
+
+        for (uint256 i = 0; i < numSignatures; i++) {
+            address signer = reportHash.recover(signatures[i]);
+            require(trustedOracles[signer], "Signer is not a trusted oracle");
+
+            // Check for duplicates
+            bool isDuplicate = false;
+            for (uint256 j = 0; j < validSignatures; j++) {
+                if (signers[j] == signer) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                signers[validSignatures] = signer;
+                validSignatures++;
+            }
+        }
+
+        require(validSignatures >= requiredSignatures(), "Not enough signatures");
+
+        // Update state
+        require(latestRound < type(uint80).max, "Latest round exceeds uint80 limit");
         latestRound++;
-        rounds[latestRound] = RoundData({answer: answer, timestamp: block.timestamp, blockNumber: block.number});
+        rounds[latestRound] = RoundData({
+            price: price,
+            reportRoundId: reportRoundId,
+            observedTs: obsTs,
+            blockNumber: block.number,
+            postedTs: block.timestamp,
+            numSignatures: validSignatures
+        });
 
-        emit PriceUpdated(latestRound, answer, block.timestamp, block.number);
+        // Emit event with the transmission details
+        emit NewTransmission(latestRound, price, reportRoundId, obsTs, msg.sender);
     }
 
-    function getRoundData(uint80 round) public view returns (int256 answer, uint256 timestamp, uint256 blockNumber) {
-        require(round <= latestRound, "Round is not yet available");
+    // ============ Utility Functions ============
+
+    /**
+     * @notice Returns the number of required signatures (e.g., majority)
+     * @return The number of required signatures
+     */
+    function requiredSignatures() public view returns (uint256) {
+        uint256 totalOracles = oracles.length;
+        uint256 threshold = (totalOracles * 2) / 3 + 1; // More than 66%
+        if (threshold > totalOracles) {
+            threshold = totalOracles;
+        }
+        if (threshold == 0) {
+            threshold = 1; // At least one signature required
+        }
+        return threshold;
+    }
+
+    // ============ Data Retrieval Functions ============
+
+    /**
+     * @notice Retrieve round data for a specific round
+     * @param round The round number to retrieve data for
+     * @return price The price for the specified round
+     * @return reportRoundId The report round ID
+     * @return timestamp The timestamp of the observation
+     * @return blockNumber The block number when the round was posted
+     */
+    function getRoundData(uint80 round)
+        public
+        view
+        returns (int256 price, uint256 reportRoundId, uint256 timestamp, uint256 blockNumber)
+    {
+        require(round > 0 && round <= latestRound, "Round is not yet available");
         RoundData storage data = rounds[round];
-        return (data.answer, data.timestamp, data.blockNumber);
+        return (data.price, data.reportRoundId, data.observedTs, data.blockNumber);
     }
 
-    function latestAnswer() public view returns (int256 answer) {
-        return rounds[latestRound].answer;
+    /**
+     * @notice Retrieve the latest price
+     * @return price The latest reported price
+     */
+    function latestPrice() public view returns (int256 price) {
+        return rounds[latestRound].price;
     }
 
+    /**
+     * @notice Retrieve the latest round data
+     * @return roundId The latest round ID
+     * @return answer The latest reported price
+     * @return startedAt The timestamp when the round started
+     * @return updatedAt The timestamp when the round was last updated
+     * @return answeredInRound The round ID in which the answer was computed
+     */
     function latestRoundData()
         external
         view
         returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
-        return (
-            latestRound,
-            rounds[latestRound].answer,
-            rounds[latestRound].timestamp,
-            rounds[latestRound].timestamp,
-            latestRound
-        );
+        RoundData storage data = rounds[latestRound];
+        return (latestRound, data.price, data.observedTs, data.postedTs, uint80(data.blockNumber));
     }
 
+    /**
+     * @notice Retrieve the timestamp of the latest round
+     * @return timestamp The timestamp of the latest round
+     */
     function latestTimestamp() public view returns (uint256 timestamp) {
-        return rounds[latestRound].timestamp;
+        return rounds[latestRound].postedTs;
     }
 
+    // ============ Admin Functions ============
+
+    /**
+     * @notice Set the description of the oracle
+     * @param _description The new description
+     */
     function setDescription(string memory _description) public onlyOwner {
         description = _description;
     }
 
+    /**
+     * @notice Set the number of decimals for the answer values
+     * @param _decimals The new number of decimals
+     */
     function setDecimals(uint8 _decimals) public onlyOwner {
         decimals = _decimals;
     }
 
-    function grantOracleRole(address account) public onlyOwner {
-        grantRole(ORACLE_ROLE, account);
+    // ============ Helper Functions ============
+
+    /**
+     * @notice Helper function that generates the Ethereum-style message hash
+     * @param _data The data to hash
+     * @return The keccak256 hash of the data
+     */
+    function getMessageHash(bytes memory _data) external pure returns (bytes32) {
+        return keccak256(_data);
     }
 
-    function revokeOracleRole(address account) public onlyOwner {
-        revokeRole(ORACLE_ROLE, account);
+    /**
+     * @notice Returns details of the latest successful update round
+     * @return roundId The number of the latest round
+     * @return answer The latest reported value
+     * @return startedAt Block timestamp when the latest successful round started
+     * @return updatedAt Block timestamp of the latest successful round
+     * @return answeredInRound The number of the latest round
+     */
+    function latestRoundData2()
+        public
+        view
+        virtual
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+    {
+        roundId = uint80(latestRound);
+        answer = latestAnswer();
+        RoundData storage data = rounds[latestRound];
+        startedAt = data.observedTs;
+        updatedAt = data.postedTs;
+        answeredInRound = roundId;
+    }
+
+    /**
+     * @notice Old Chainlink function for getting the latest successfully reported value
+     * @return latestAnswer The latest successfully reported value
+     */
+    function latestAnswer() public view virtual returns (int256) {
+        return rounds[latestRound].price;
     }
 }
