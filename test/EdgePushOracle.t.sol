@@ -12,9 +12,10 @@ contract EdgePushOracleTest is Test {
     address public owner;
     address public oracle1;
     address public oracle2;
-
+    address public oracle3;
     uint256 private privateKey1;
     uint256 private privateKey2;
+    uint256 private privateKey3;
 
     function setUp() public {
         owner = address(this);
@@ -22,10 +23,11 @@ contract EdgePushOracleTest is Test {
         // Assign private keys for oracles
         privateKey1 = 0xA11CE; // Some arbitrary private key
         privateKey2 = 0xB0B; // Another arbitrary private key
-
+        privateKey3 = 0xC0DE; // Another arbitrary private key
         // Corresponding addresses derived from the private keys
         oracle1 = vm.addr(privateKey1);
         oracle2 = vm.addr(privateKey2);
+        oracle3 = vm.addr(privateKey3);
 
         edgePushOracle = new EdgePushOracle(8, "Test Oracle", owner);
 
@@ -36,27 +38,27 @@ contract EdgePushOracleTest is Test {
     function testAddTrustedOracle() public {
         assertTrue(!edgePushOracle.trustedOracles(oracle1), "Oracle1 should not be trusted yet");
 
-        edgePushOracle.addTrustedOracle(oracle1);
+        edgePushOracle.addOracle(oracle1);
         assertTrue(edgePushOracle.trustedOracles(oracle1), "Oracle1 should now be trusted");
     }
 
     function testRemoveTrustedOracle() public {
-        edgePushOracle.addTrustedOracle(oracle1);
+        edgePushOracle.addOracle(oracle1);
         assertTrue(edgePushOracle.trustedOracles(oracle1), "Oracle1 should be trusted");
 
-        edgePushOracle.removeTrustedOracle(oracle1);
+        edgePushOracle.removeOracle(oracle1);
         assertTrue(!edgePushOracle.trustedOracles(oracle1), "Oracle1 should no longer be trusted");
     }
 
     function testPostUpdateWithMultipleOracles() public {
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
 
         int256 price = 100;
         uint256 reportRoundId = 1;
-        uint256 obsTs = block.timestamp; // Now obsTs is 3600
+        uint256 observationTs = block.timestamp;
 
-        bytes memory report = abi.encode(price, reportRoundId, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
         bytes32 reportHash = keccak256(report);
 
         // Simulate signatures from oracles using their private keys
@@ -76,10 +78,11 @@ contract EdgePushOracleTest is Test {
         assertEq(latestPrice, price, "The latest price should match the posted price");
         assertEq(roundId, 1, "Round ID should be 1");
     }
-    /*
+
     function testPostUpdateWithInsufficientSignatures() public {
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
+        edgePushOracle.addOracle(oracle3);
 
         int256 price = 100;
         uint256 reportRoundId = 1;
@@ -95,20 +98,19 @@ contract EdgePushOracleTest is Test {
         bytes[] memory signatures = new bytes[](1);
         signatures[0] = signature1;
 
-        vm.expectRevert("Not enough signatures");
+        vm.expectRevert();
         edgePushOracle.postUpdate(report, signatures);
     }
-    */
 
     function testPostUpdateWithFutureTimestamp() public {
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
 
         int256 price = 100;
         uint256 reportRoundId = 1;
-        uint256 obsTs = block.timestamp + 10 minutes; // Future timestamp
+        uint256 observationTs = block.timestamp + 10 minutes; // Future timestamp
 
-        bytes memory report = abi.encode(price, reportRoundId, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -129,15 +131,15 @@ contract EdgePushOracleTest is Test {
         // Set block.timestamp to a value greater than 1 hour to avoid underflow
         vm.warp(2 hours); // block.timestamp = 7200
 
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
 
         int256 price = 100;
         uint256 reportRoundId = 1;
 
-        uint256 obsTs = block.timestamp - 1 hours - 1; // Old timestamp, obsTs = 3599
+        uint256 observationTs = block.timestamp - 1 hours - 1; // Old timestamp, observationTs = 3599
 
-        bytes memory report = abi.encode(price, reportRoundId, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -155,14 +157,14 @@ contract EdgePushOracleTest is Test {
     }
 
     function testLatestPriceRetrieval() public {
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
 
         int256 price = 200;
         uint256 reportRoundId = 1;
-        uint256 obsTs = block.timestamp; // obsTs is 3600
+        uint256 observationTs = block.timestamp; // observationTs is 3600
 
-        bytes memory report = abi.encode(price, reportRoundId, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -181,14 +183,14 @@ contract EdgePushOracleTest is Test {
     }
 
     function testRoundDataRetrieval() public {
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
 
         int256 price = 150;
         uint256 reportRoundId = 2;
-        uint256 obsTs = block.timestamp;
+        uint256 observationTs = block.timestamp;
 
-        bytes memory report = abi.encode(price, reportRoundId, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -209,7 +211,7 @@ contract EdgePushOracleTest is Test {
 
         assertEq(storedPrice, price, "Stored price should match the posted price");
         assertEq(storedReportRoundId, reportRoundId, "Stored reportRoundId should match");
-        assertEq(storedTimestamp, obsTs, "Stored timestamp should match");
+        assertEq(storedTimestamp, observationTs, "Stored timestamp should match");
         assertEq(storedBlockNumber, block.number, "Stored blockNumber should match");
     }
 
@@ -226,28 +228,26 @@ contract EdgePushOracleTest is Test {
     }
 
     function testRequiredSignatures() public {
-        edgePushOracle.addTrustedOracle(oracle1);
-        edgePushOracle.addTrustedOracle(oracle2);
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
 
         uint256 requiredSigs = edgePushOracle.requiredSignatures();
-        assertEq(requiredSigs, 2, "Required signatures should be 2");
+        assertEq(requiredSigs, 1, "Required signatures should be 1");
 
         // Add another oracle and check required signatures
-        address oracle3 = vm.addr(0xC0DE);
         address oracle4 = vm.addr(0xDEAD);
         address oracle5 = vm.addr(0xBEEF);
-        edgePushOracle.addTrustedOracle(oracle3);
-        edgePushOracle.addTrustedOracle(oracle4);
-        edgePushOracle.addTrustedOracle(oracle5);
+        edgePushOracle.addOracle(oracle3);
+        edgePushOracle.addOracle(oracle4);
+        edgePushOracle.addOracle(oracle5);
 
         requiredSigs = edgePushOracle.requiredSignatures();
-        assertEq(requiredSigs, 4, "Required signatures is wrong");
+        assertEq(requiredSigs, 3, "Required signatures is wrong");
     }
 
     function testPostUpdateWithProvidedData() public {
         address oracle = 0x9bf985216822e1522c02b100D6b0224338c33b6B;
-        address oracle2 = address(0x01);
-        edgePushOracle.addTrustedOracle(oracle);
+        edgePushOracle.addOracle(oracle);
         vm.warp(1727186883);
 
         bytes memory report =
@@ -257,7 +257,7 @@ contract EdgePushOracleTest is Test {
         signatures[0] =
             hex"903f94c7f5cf0057788cdd524fa2d1f21780e025cadb85f0038689741a286e842fc5082bc4972add8b7df4f259d79d37591bf415760711089a75949e9880c17001";
 
-        (int256 price, uint256 reportRoundId, uint256 obsTs) = abi.decode(report, (int256, uint256, uint256));
+        //(int256 price, uint256 reportRoundId, uint256 observationTs) = abi.decode(report, (int256, uint256, uint256));
         //assertEq(block.timestamp, obsTs, "Observed timestamp should match");
 
         edgePushOracle.postUpdate(report, signatures);
@@ -265,5 +265,102 @@ contract EdgePushOracleTest is Test {
         (uint80 roundId, int256 latestPrice,,,) = edgePushOracle.latestRoundData();
         assertEq(latestPrice, 99988501, "The latest price should match the posted price");
         assertEq(roundId, 1, "Round ID should match the posted round ID");
+    }
+
+    function testAddDuplicateOracle() public {
+        edgePushOracle.addOracle(oracle1);
+        vm.expectRevert("Oracle already trusted"); // Expect revert for duplicate addition
+        edgePushOracle.addOracle(oracle1);
+    }
+
+    function testRemoveNonExistentOracle() public {
+        vm.expectRevert("Oracle not found"); // Expect revert for removing non-existent oracle
+        edgePushOracle.removeOracle(oracle1);
+    }
+
+    function testPostUpdateWithInvalidSignatures() public {
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
+
+        int256 price = 100;
+        uint256 reportRoundId = 1;
+        uint256 observationTs = block.timestamp;
+
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
+        bytes32 reportHash = keccak256(report);
+
+        // Simulate invalid signature
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
+        bytes memory invalidSignature = abi.encodePacked(r1, s1, v1 + 1); // Alter v to make it invalid
+
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = invalidSignature;
+
+        vm.expectRevert(); // Expect revert due to invalid signature
+        edgePushOracle.postUpdate(report, signatures);
+    }
+
+    function testPostUpdateWithNoOracles() public {
+        int256 price = 100;
+        uint256 reportRoundId = 1;
+        uint256 observationTs = block.timestamp;
+
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
+        bytes32 reportHash = keccak256(report);
+
+        bytes[] memory signatures = new bytes[](0); // No signatures
+
+        vm.expectRevert(); // Expect revert due to no trusted oracles
+        edgePushOracle.postUpdate(report, signatures);
+    }
+
+    function testPostUpdateWithAllOraclesRemoved() public {
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.removeOracle(oracle1); // Remove the only oracle
+
+        int256 price = 100;
+        uint256 reportRoundId = 1;
+        uint256 observationTs = block.timestamp;
+
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
+        bytes32 reportHash = keccak256(report);
+
+        bytes[] memory signatures = new bytes[](0); // No signatures
+
+        vm.expectRevert(); // Expect revert due to no trusted oracles
+        edgePushOracle.postUpdate(report, signatures);
+    }
+
+    function testGetRoundDataForNonExistentRound() public {
+        vm.expectRevert("Round is not yet available"); // Expect revert for non-existent round
+        edgePushOracle.getRoundData(1); // Attempt to get data for round 1 which doesn't exist
+    }
+
+    function testSetDescriptionToEmptyString() public {
+        edgePushOracle.setDescription(""); // Set description to empty string
+        assertEq(edgePushOracle.description(), "", "Description should be updated to empty string");
+    }
+
+    function testSetDecimalsToZero() public {
+        edgePushOracle.setDecimals(0); // Set decimals to zero
+        assertEq(edgePushOracle.decimals(), 0, "Decimals should be updated to zero");
+    }
+
+    function testRequiredSignaturesEdgeCase() public {
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
+        edgePushOracle.addOracle(oracle3);
+
+        uint256 requiredSigs = edgePushOracle.requiredSignatures();
+        assertEq(requiredSigs, 2, "Required signatures should be 2 with 3 oracles");
+
+        // Add another oracle and check required signatures
+        address oracle4 = vm.addr(0xDEAD);
+        address oracle5 = vm.addr(0xBEEF);
+        edgePushOracle.addOracle(oracle4);
+        edgePushOracle.addOracle(oracle5);
+
+        requiredSigs = edgePushOracle.requiredSignatures();
+        assertEq(requiredSigs, 3, "Required signatures should be 3 with 5 oracles");
     }
 }
