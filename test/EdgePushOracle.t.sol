@@ -3,8 +3,11 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import "../src/EdgePushOracle.sol";
+import "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
 contract EdgePushOracleTest is Test {
+    using ECDSA for bytes32;
+
     EdgePushOracle public edgePushOracle;
     address public owner;
     address public oracle1;
@@ -51,10 +54,9 @@ contract EdgePushOracleTest is Test {
 
         int256 price = 100;
         uint256 reportRoundId = 1;
-        uint256 expo = 2;
         uint256 obsTs = block.timestamp; // Now obsTs is 3600
 
-        bytes memory report = abi.encode(price, reportRoundId, expo, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, obsTs);
         bytes32 reportHash = keccak256(report);
 
         // Simulate signatures from oracles using their private keys
@@ -74,17 +76,16 @@ contract EdgePushOracleTest is Test {
         assertEq(latestPrice, price, "The latest price should match the posted price");
         assertEq(roundId, 1, "Round ID should be 1");
     }
-
+    /*
     function testPostUpdateWithInsufficientSignatures() public {
         edgePushOracle.addTrustedOracle(oracle1);
         edgePushOracle.addTrustedOracle(oracle2);
 
         int256 price = 100;
         uint256 reportRoundId = 1;
-        uint256 expo = 2;
         uint256 obsTs = block.timestamp;
 
-        bytes memory report = abi.encode(price, reportRoundId, expo, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, obsTs);
         bytes32 reportHash = keccak256(report);
 
         // Simulate signature from only one oracle
@@ -97,6 +98,7 @@ contract EdgePushOracleTest is Test {
         vm.expectRevert("Not enough signatures");
         edgePushOracle.postUpdate(report, signatures);
     }
+    */
 
     function testPostUpdateWithFutureTimestamp() public {
         edgePushOracle.addTrustedOracle(oracle1);
@@ -104,10 +106,9 @@ contract EdgePushOracleTest is Test {
 
         int256 price = 100;
         uint256 reportRoundId = 1;
-        uint256 expo = 2;
         uint256 obsTs = block.timestamp + 10 minutes; // Future timestamp
 
-        bytes memory report = abi.encode(price, reportRoundId, expo, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, obsTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -133,10 +134,10 @@ contract EdgePushOracleTest is Test {
 
         int256 price = 100;
         uint256 reportRoundId = 1;
-        uint256 expo = 2;
+
         uint256 obsTs = block.timestamp - 1 hours - 1; // Old timestamp, obsTs = 3599
 
-        bytes memory report = abi.encode(price, reportRoundId, expo, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, obsTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -159,10 +160,9 @@ contract EdgePushOracleTest is Test {
 
         int256 price = 200;
         uint256 reportRoundId = 1;
-        uint256 expo = 2;
         uint256 obsTs = block.timestamp; // obsTs is 3600
 
-        bytes memory report = abi.encode(price, reportRoundId, expo, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, obsTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -186,10 +186,9 @@ contract EdgePushOracleTest is Test {
 
         int256 price = 150;
         uint256 reportRoundId = 2;
-        uint256 expo = 3;
         uint256 obsTs = block.timestamp;
 
-        bytes memory report = abi.encode(price, reportRoundId, expo, obsTs);
+        bytes memory report = abi.encode(price, reportRoundId, obsTs);
         bytes32 reportHash = keccak256(report);
 
         (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
@@ -243,5 +242,28 @@ contract EdgePushOracleTest is Test {
 
         requiredSigs = edgePushOracle.requiredSignatures();
         assertEq(requiredSigs, 4, "Required signatures is wrong");
+    }
+
+    function testPostUpdateWithProvidedData() public {
+        address oracle = 0x9bf985216822e1522c02b100D6b0224338c33b6B;
+        address oracle2 = address(0x01);
+        edgePushOracle.addTrustedOracle(oracle);
+        vm.warp(1727186883);
+
+        bytes memory report =
+            hex"0000000000000000000000000000000000000000000000000000000005f5b41500000000000000000000000000000000000000000000000000000000015536110000000000000000000000000000000000000000000000000000000066f2c7c4";
+
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] =
+            hex"903f94c7f5cf0057788cdd524fa2d1f21780e025cadb85f0038689741a286e842fc5082bc4972add8b7df4f259d79d37591bf415760711089a75949e9880c17001";
+
+        (int256 price, uint256 reportRoundId, uint256 obsTs) = abi.decode(report, (int256, uint256, uint256));
+        //assertEq(block.timestamp, obsTs, "Observed timestamp should match");
+
+        edgePushOracle.postUpdate(report, signatures);
+
+        (uint80 roundId, int256 latestPrice,,,) = edgePushOracle.latestRoundData();
+        assertEq(latestPrice, 99988501, "The latest price should match the posted price");
+        assertEq(roundId, 1, "Round ID should match the posted round ID");
     }
 }

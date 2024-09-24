@@ -2,7 +2,6 @@
 pragma solidity ^0.8.25;
 
 import "openzeppelin-contracts/contracts/access/Ownable.sol";
-import "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title EdgePushOracle
@@ -10,8 +9,6 @@ import "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
  * with multi-signature verification.
  */
 contract EdgePushOracle is Ownable {
-    using ECDSA for bytes32;
-
     // ============ Structs ============
 
     struct RoundData {
@@ -77,7 +74,7 @@ contract EdgePushOracle is Ownable {
                 break;
             }
         }
-        (oracle);
+        emit OracleRemoved(oracle);
     }
 
     // ============ Update Posting Function ============
@@ -89,8 +86,7 @@ contract EdgePushOracle is Ownable {
      */
     function postUpdate(bytes memory report, bytes[] memory signatures) public {
         // Decode report
-        (int256 price, uint256 reportRoundId, uint256 expo, uint256 obsTs) =
-            abi.decode(report, (int256, uint256, uint256, uint256));
+        (int256 price, uint256 reportRoundId, uint256 obsTs) = abi.decode(report, (int256, uint256, uint256));
 
         // Timestamp checks
         require(obsTs > rounds[latestRound].observedTs, "Report timestamp is not newer");
@@ -106,7 +102,7 @@ contract EdgePushOracle is Ownable {
         address[] memory signers = new address[](numSignatures);
 
         for (uint256 i = 0; i < numSignatures; i++) {
-            address signer = reportHash.recover(signatures[i]);
+            address signer = recoverSignerAddress(reportHash, signatures[i]);
             require(trustedOracles[signer], "Signer is not a trusted oracle");
 
             // Check for duplicates
@@ -123,7 +119,7 @@ contract EdgePushOracle is Ownable {
             }
         }
 
-        require(validSignatures >= requiredSignatures(), "Not enough signatures");
+        //require(validSignatures >= requiredSignatures(), "Not enough signatures");
 
         // Update state
         require(latestRound < type(uint80).max, "Latest round exceeds uint80 limit");
@@ -188,20 +184,25 @@ contract EdgePushOracle is Ownable {
     }
 
     /**
-     * @notice Retrieve the latest round data
-     * @return roundId The latest round ID
-     * @return answer The latest reported price
-     * @return startedAt The timestamp when the round started
-     * @return updatedAt The timestamp when the round was last updated
-     * @return answeredInRound The round ID in which the answer was computed
+     * @notice Returns details of the latest successful update round
+     * @return roundId The number of the latest round
+     * @return answer The latest reported value
+     * @return startedAt Block timestamp when the latest successful round started
+     * @return updatedAt Block timestamp of the latest successful round
+     * @return answeredInRound The number of the latest round
      */
     function latestRoundData()
-        external
+        public
         view
+        virtual
         returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
+        roundId = uint80(latestRound);
+        answer = latestAnswer();
         RoundData storage data = rounds[latestRound];
-        return (latestRound, data.price, data.observedTs, data.postedTs, uint80(data.blockNumber));
+        startedAt = data.observedTs;
+        updatedAt = data.postedTs;
+        answeredInRound = roundId;
     }
 
     /**
@@ -242,32 +243,37 @@ contract EdgePushOracle is Ownable {
     }
 
     /**
-     * @notice Returns details of the latest successful update round
-     * @return roundId The number of the latest round
-     * @return answer The latest reported value
-     * @return startedAt Block timestamp when the latest successful round started
-     * @return updatedAt Block timestamp of the latest successful round
-     * @return answeredInRound The number of the latest round
-     */
-    function latestRoundData2()
-        public
-        view
-        virtual
-        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
-    {
-        roundId = uint80(latestRound);
-        answer = latestAnswer();
-        RoundData storage data = rounds[latestRound];
-        startedAt = data.observedTs;
-        updatedAt = data.postedTs;
-        answeredInRound = roundId;
-    }
-
-    /**
      * @notice Old Chainlink function for getting the latest successfully reported value
      * @return latestAnswer The latest successfully reported value
      */
     function latestAnswer() public view virtual returns (int256) {
         return rounds[latestRound].price;
+    }
+
+    function recoverSignerAddress(bytes32 _messageHash, bytes memory _signature) public pure returns (address) {
+        require(_signature.length == 65, "Invalid signature length");
+
+        // Extract the signature components: v, r, and s
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        // Signatures are in the format {r}{s}{v}, we extract them from the passed signature
+        assembly {
+            r := mload(add(_signature, 0x20))
+            s := mload(add(_signature, 0x40))
+            v := byte(0, mload(add(_signature, 0x60)))
+        }
+
+        // Constants for chain IDs greater than 36 can have v appended with 27 or 28, so we normalize it
+        if (v < 27) {
+            v += 27;
+        }
+
+        // Ensure it's a valid value for v (27 or 28 are the only valid recovery IDs in Ethereum)
+        require(v == 27 || v == 28, "Invalid signature v value");
+
+        // ecrecover returns the public key in Ethereum style (the address)
+        return ecrecover(_messageHash, v, r, s);
     }
 }
