@@ -2,12 +2,10 @@
 pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import "../src/EdgePushOracle.sol";
-import "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
 contract EdgePushOracleTest is Test {
-    using ECDSA for bytes32;
-
     EdgePushOracle public edgePushOracle;
     address public owner;
     address public oracle1;
@@ -29,7 +27,14 @@ contract EdgePushOracleTest is Test {
         oracle2 = vm.addr(privateKey2);
         oracle3 = vm.addr(privateKey3);
 
-        edgePushOracle = new EdgePushOracle(8, "Test Oracle", owner);
+        address[] memory trustedOracles = new address[](0);
+
+        address proxy = Upgrades.deployUUPSProxy(
+            "EdgePushOracle.sol", abi.encodeCall(EdgePushOracle.initialize, (8, "test", owner, trustedOracles))
+        );
+
+        // Assign edgePushOracle to point to the deployed proxy
+        edgePushOracle = EdgePushOracle(proxy);
 
         // Set block.timestamp to a non-zero value
         vm.warp(1 hours); // Set block.timestamp to 1 hour (3600 seconds)
@@ -74,8 +79,8 @@ contract EdgePushOracleTest is Test {
 
         edgePushOracle.postUpdate(report, signatures);
 
-        (uint80 roundId, int256 latestPrice,,,) = edgePushOracle.latestRoundData();
-        assertEq(latestPrice, price, "The latest price should match the posted price");
+        (uint80 roundId, int256 latestAnswer,,,) = edgePushOracle.latestRoundData();
+        assertEq(latestAnswer, price, "The latest price should match the posted price");
         assertEq(roundId, 1, "Round ID should be 1");
     }
 
@@ -154,32 +159,6 @@ contract EdgePushOracleTest is Test {
 
         vm.expectRevert("Report timestamp too old");
         edgePushOracle.postUpdate(report, signatures);
-    }
-
-    function testLatestPriceRetrieval() public {
-        edgePushOracle.addOracle(oracle1);
-        edgePushOracle.addOracle(oracle2);
-
-        int256 price = 200;
-        uint256 reportRoundId = 1;
-        uint256 observationTs = block.timestamp; // observationTs is 3600
-
-        bytes memory report = abi.encode(price, reportRoundId, observationTs);
-        bytes32 reportHash = keccak256(report);
-
-        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
-        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(privateKey2, reportHash);
-
-        bytes memory signature1 = abi.encodePacked(r1, s1, v1);
-        bytes memory signature2 = abi.encodePacked(r2, s2, v2);
-
-        bytes[] memory signatures = new bytes[](2);
-        signatures[0] = signature1;
-        signatures[1] = signature2;
-
-        edgePushOracle.postUpdate(report, signatures);
-
-        assertEq(edgePushOracle.latestPrice(), price, "The latest price should be the posted price");
     }
 
     function testRoundDataRetrieval() public {
@@ -262,8 +241,8 @@ contract EdgePushOracleTest is Test {
 
         edgePushOracle.postUpdate(report, signatures);
 
-        (uint80 roundId, int256 latestPrice,,,) = edgePushOracle.latestRoundData();
-        assertEq(latestPrice, 99988501, "The latest price should match the posted price");
+        (uint80 roundId, int256 latestAnswer,,,) = edgePushOracle.latestRoundData();
+        assertEq(latestAnswer, 99988501, "The latest price should match the posted price");
         assertEq(roundId, 1, "Round ID should match the posted round ID");
     }
 
@@ -306,7 +285,6 @@ contract EdgePushOracleTest is Test {
         uint256 observationTs = block.timestamp;
 
         bytes memory report = abi.encode(price, reportRoundId, observationTs);
-        bytes32 reportHash = keccak256(report);
 
         bytes[] memory signatures = new bytes[](0); // No signatures
 
@@ -323,7 +301,6 @@ contract EdgePushOracleTest is Test {
         uint256 observationTs = block.timestamp;
 
         bytes memory report = abi.encode(price, reportRoundId, observationTs);
-        bytes32 reportHash = keccak256(report);
 
         bytes[] memory signatures = new bytes[](0); // No signatures
 
@@ -362,5 +339,110 @@ contract EdgePushOracleTest is Test {
 
         requiredSigs = edgePushOracle.requiredSignatures();
         assertEq(requiredSigs, 3, "Required signatures should be 3 with 5 oracles");
+    }
+
+    function testLatestRound() public {
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
+
+        int256 price = 100;
+        uint256 reportRoundId = 1;
+        uint256 observationTs = block.timestamp;
+
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
+        bytes32 reportHash = keccak256(report);
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(privateKey2, reportHash);
+
+        bytes memory signature1 = abi.encodePacked(r1, s1, v1);
+        bytes memory signature2 = abi.encodePacked(r2, s2, v2);
+
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = signature1;
+        signatures[1] = signature2;
+
+        edgePushOracle.postUpdate(report, signatures);
+
+        assertEq(edgePushOracle.latestRound(), 1, "Latest round should be 1");
+    }
+
+    function testGetAnswer() public {
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
+
+        int256 price = 100;
+        uint256 reportRoundId = 1;
+        uint256 observationTs = block.timestamp;
+
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
+        bytes32 reportHash = keccak256(report);
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(privateKey2, reportHash);
+
+        bytes memory signature1 = abi.encodePacked(r1, s1, v1);
+        bytes memory signature2 = abi.encodePacked(r2, s2, v2);
+
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = signature1;
+        signatures[1] = signature2;
+
+        edgePushOracle.postUpdate(report, signatures);
+
+        assertEq(edgePushOracle.getAnswer(1), price, "The answer for round 1 should be the posted price");
+    }
+
+    function testGetTimestamp() public {
+        edgePushOracle.addOracle(oracle1);
+        edgePushOracle.addOracle(oracle2);
+
+        int256 price = 100;
+        uint256 reportRoundId = 1;
+        uint256 observationTs = block.timestamp;
+
+        bytes memory report = abi.encode(price, reportRoundId, observationTs);
+        bytes32 reportHash = keccak256(report);
+
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(privateKey1, reportHash);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(privateKey2, reportHash);
+
+        bytes memory signature1 = abi.encodePacked(r1, s1, v1);
+        bytes memory signature2 = abi.encodePacked(r2, s2, v2);
+
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = signature1;
+        signatures[1] = signature2;
+
+        edgePushOracle.postUpdate(report, signatures);
+
+        assertEq(
+            edgePushOracle.getTimestamp(1), block.timestamp, "The timestamp for round 1 should be the block timestamp"
+        );
+    }
+
+    function testTransferOwnership() public {
+        // Verify the initial owner is the test contract (address(this))
+        assertEq(edgePushOracle.owner(), owner, "Initial owner should be the deployer (test contract)");
+
+        // Create a new address to transfer ownership to
+        address newOwner = vm.addr(0xABCD);
+
+        // Transfer ownership to newOwner
+        edgePushOracle.transferOwnership(newOwner);
+
+        // Verify that the owner has been updated
+        assertEq(edgePushOracle.owner(), newOwner, "Owner should be updated to newOwner");
+
+        // Try to call an onlyOwner function from the old owner (should fail)
+        vm.expectRevert();
+        edgePushOracle.setDescription("Should fail");
+
+        // Switch to newOwner and update the description
+        vm.prank(newOwner);
+        edgePushOracle.setDescription("Updated by new owner");
+
+        // Verify that the description was updated
+        assertEq(edgePushOracle.description(), "Updated by new owner", "Description should be updated by new owner");
     }
 }
