@@ -160,8 +160,9 @@ contract EdgePushOracle is OwnableUpgradeable, UUPSUpgradeable {
 
         require(validSignatures >= requiredSignatures(), "Not enough signatures"); // Ensure enough valid signatures
 
-        require(_latestRound < type(uint80).max, "Latest round exceeds uint80 limit"); // Check round limit
         _latestRound++; // Increment latest round
+        require(_latestRound < type(uint80).max, "Latest round exceeds uint80 limit"); // Check round limit
+
         rounds[_latestRound] = RoundData({
             price: price,
             reportRoundId: reportRoundId,
