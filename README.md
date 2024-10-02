@@ -13,12 +13,10 @@ EdgePushOracle is a smart contract designed to act as an oracle for price update
 The main contract is `EdgePushOracle`, which includes the following key components:
 
 - **Roles**:
-
   - `DEFAULT_ADMIN_ROLE`: Admin role for managing other roles.
   - `ORACLE_ROLE`: Role for accounts that can post price updates.
 
 - **Events**:
-
   - `PriceUpdated`: Emitted when a new price is posted.
 
 - **Functions**:
@@ -45,14 +43,12 @@ To deploy the `EdgePushOracle` contract, follow these steps:
 ### Build
 
 1. Clone the repository:
-
    ```shell
    git clone <repository-url>
    cd <repository-directory>
    ```
 
 2. Install dependencies:
-
    ```shell
    forge install
    ```
@@ -65,7 +61,6 @@ To deploy the `EdgePushOracle` contract, follow these steps:
 ### Deploy
 
 1. Create a deployment script (e.g., `script/Deploy.s.sol`):
-
    ```solidity
    // SPDX-License-Identifier: MIT
    pragma solidity ^0.8.0;
@@ -93,16 +88,15 @@ To deploy the `EdgePushOracle` contract, follow these steps:
 
 ### Testing
 
-To run tests, use the following command:
-shell
+To run tests, use the following command: 
+```shell
 forge test
+```
 
 ### Formatting
 
 To format the code, use:
-
 ```shell
-shell
 forge fmt
 ```
 
