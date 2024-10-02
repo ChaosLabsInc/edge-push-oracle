@@ -10,7 +10,7 @@ import "openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.s
  * @dev A decentralized oracle contract that allows trusted oracles to push price updates
  * with multi-signature verification. Upgradable using UUPS proxy pattern.
  */
-contract EdgePushOracle is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+contract EdgePushOracle is OwnableUpgradeable, UUPSUpgradeable {
     // ============ Structs ============
 
     struct RoundData {
@@ -72,6 +72,8 @@ contract EdgePushOracle is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             trustedOracles[oracle] = true; // Mark oracle as trusted
             oracles.push(oracle); // Add oracle to the list
         }
+
+        //_disableInitializers();
     }
 
     // ============ Upgrade Authorization ============

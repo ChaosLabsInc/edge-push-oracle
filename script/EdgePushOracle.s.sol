@@ -11,12 +11,7 @@ contract DeployEdgePushOracle is Script {
         // Load the deployer's private key from environment variable
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
 
-        address[] memory trustedOracles = new address[](5);
-        trustedOracles[0] = 0xb42F25C68901b9291a488d68536f449538a7a182;
-        trustedOracles[1] = 0xBb5e07e62Af4131e504a430EA608FE719E8db18A;
-        trustedOracles[2] = 0xf1a2e6b10c24B0Db668e4D6654aD746Af776f27e;
-        trustedOracles[3] = 0xe301279400AB18d9870065b4dc3fF0bf984EeE06;
-        trustedOracles[4] = 0x152e901D6E71e95dAA31B13767a8589E20b99Aa3;
+        address[] memory trustedOracles = new address[](0);
 
         // Start broadcasting transactions using the deployer's private key
         vm.startBroadcast(deployerPrivateKey);

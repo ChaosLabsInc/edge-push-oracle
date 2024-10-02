@@ -12,3 +12,6 @@ docs/
 .env
 
 report.md
+
+script/*
+!script/EdgePushOracle.s.sol
