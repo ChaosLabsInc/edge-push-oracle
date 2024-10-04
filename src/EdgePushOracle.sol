@@ -183,7 +183,7 @@ contract EdgePushOracle is OwnableUpgradeable, UUPSUpgradeable {
      */
     function requiredSignatures() public view returns (uint256) {
         uint256 totalOracles = oracles.length; // Get total number of oracles
-        uint256 threshold = (totalOracles * 2) / 3; // Calculate threshold for majority
+        uint256 threshold = (totalOracles * 2) / 3; // Calculate threshold for majority, rounding up
         return threshold > 0 ? threshold : 1; // Return required signatures
     }
 
