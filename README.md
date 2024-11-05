@@ -1,4 +1,4 @@
-# EdgePushOracle
+# Edge Push Oracle
 
 EdgePushOracle is a smart contract designed to act as an oracle for price updates. It leverages OpenZeppelin's `Ownable` and `AccessControl` contracts to manage permissions and ownership.
 
@@ -91,13 +91,6 @@ To deploy the `EdgePushOracle` contract, follow these steps:
 To run tests, use the following command: 
 ```shell
 forge test
-```
-
-### Formatting
-
-To format the code, use:
-```shell
-forge fmt
 ```
 
 ### Additional Commands
